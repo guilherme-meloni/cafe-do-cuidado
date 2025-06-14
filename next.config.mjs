@@ -4,11 +4,8 @@ const nextConfig = {
   reactStrictMode: true,
 };
 
-// Importa o plugin do PWA
-import withPWAInit from "@ducanh2912/next-pwa";
-
-// Ativa o PWA
-const withPWA = withPWAInit({
+// Usa um plugin de PWA moderno e compatível com o App Router
+const withPWA = require("@ducanh2912/next-pwa").default({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
 });

@@ -3,5 +3,5 @@
   "compilerOptions": {
     "lib": ["deno.ns", "dom", "dom.iterable"]
   },
-  "importMap": "supabase/functions/import_map.json"
+  "importMap": "./supabase/functions/import_map.json"
 }

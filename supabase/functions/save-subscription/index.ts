@@ -1,7 +1,7 @@
-// supabase/functions/save-subscription/index.ts (VERSÃO CORRIGIDA)
-
+// supabase/functions/save-subscription/index.ts
 import { serve } from "std/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push"; // Importa usando o import_map
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,12 +15,10 @@ serve(async (req) => {
 
   try {
     const subscription = await req.json();
-
     if (!subscription || !subscription.endpoint) {
       throw new Error("Inscrição inválida recebida.");
     }
-
-    // CORREÇÃO: Usa Deno.env.get para ler a URL e a CHAVE DE SERVIÇO dos secrets/env.
+    
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -30,23 +28,18 @@ serve(async (req) => {
       .from("subscriptions")
       .insert({ subscription_data: subscription });
 
-    if (error) {
-      if (error.code === '23505') { // Inscrição já existe
-        console.log("Inscrição já existe, tratando como sucesso.");
-      } else {
-        throw error;
-      }
+    if (error && error.code !== '23505') { // Ignora erro se a inscrição já existir
+      throw error;
     }
 
-    return new Response(JSON.stringify({ message: "Inscrição salva com sucesso!" }), {
+    return new Response(JSON.stringify({ message: "Inscrição salva!" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
-
   } catch (err) {
     return new Response(String(err?.message ?? err), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status: 400,
     });
   }
 });
