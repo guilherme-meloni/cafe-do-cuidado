@@ -1,0 +1,21 @@
+{
+  "name": "Café do Cuidado",
+  "short_name": "CuidadoApp",
+  "description": "Seu assistente pessoal para gerenciar seus 'pedidos' diários.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e2030",
+  "theme_color": "#24273a",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
