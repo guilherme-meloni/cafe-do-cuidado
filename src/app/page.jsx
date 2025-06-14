@@ -1,10 +1,9 @@
-// ----- ARQUIVO 2: src/app/page.jsx (VERSÃO LIMPA E ATUALIZADA) -----
-
+// src/app/page.jsx (VERSÃO COMPLETA, FINAL E CORRIGIDA)
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../utils/supabaseClient';
 import { getLocalData, setLocalData } from '../utils/localStorage';
+import { supabase } from '../utils/supabaseClient';
 import Modal from '../components/Modal';
 import PedidoCard from '../components/PedidoCard';
 import ContatoCard from '../components/ContatoCard';
@@ -16,7 +15,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const HomePage = () => {
-    // ESTADOS (Simplificados - sem a lógica de notificação manual)
+    // ESTADOS
     const [pedidos, setPedidos] = useState([]);
     const [contatos, setContatos] = useState(() => getLocalData('contatos') || []);
     const [isLoading, setIsLoading] = useState(true);
@@ -49,8 +48,6 @@ const HomePage = () => {
     // FUNÇÕES
     const triggerHapticFeedback = () => { if (navigator?.vibrate) navigator.vibrate(50); };
     
-    // As funções de notificação foram REMOVIDAS. O OneSignal cuida de tudo.
-
     const handleFormChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const resetPedidoForm = () => { setModalPedidoOpen(false); setEditPedido(null); setFormData({ nome: "", quantidade: "", doses: "", horario: "", tipoImagem: "coffee" }); };
     
@@ -58,7 +55,13 @@ const HomePage = () => {
         triggerHapticFeedback();
         if (pedido) {
             setEditPedido(pedido);
-            setFormData({ nome: pedido.nome || "", quantidade: pedido.quantidade || "", doses: pedido.doses || "", horario: pedido.horario || "", tipoImagem: pedido.tipoImagem || "coffee" });
+            setFormData({
+                nome: pedido.nome || "",
+                quantidade: pedido.quantidade || "",
+                doses: pedido.doses || "",
+                horario: pedido.horario || "",
+                tipoImagem: pedido.tipoImagem || "coffee"
+            });
         } else {
             setEditPedido(null);
             setFormData({ nome: "", quantidade: "", doses: "", horario: "", tipoImagem: "coffee" });
@@ -70,15 +73,26 @@ const HomePage = () => {
         triggerHapticFeedback();
         const { nome, quantidade, doses, horario, tipoImagem } = formData;
         if (!nome.trim() || !quantidade || !doses) return;
+
         const pedidoData = { nome, quantidade: parseFloat(quantidade), doses: parseFloat(doses), horario: horario || null, tipoImagem };
+        
+        let query;
         if (editPedido) {
-            pedidoData.id = editPedido.id;
+            // Se estiver editando, ATUALIZA o pedido existente
+            query = supabase.from('pedidos').update(pedidoData).eq('id', editPedido.id);
         } else {
-            pedidoData.historico = [];
+            // Se for novo, INSERE um novo pedido com histórico vazio
+            query = supabase.from('pedidos').insert([{ ...pedidoData, historico: [] }]);
         }
-        const { error } = await supabase.from('pedidos').upsert(pedidoData).select();
-        if (error) console.error("Erro ao salvar pedido:", error);
-        else { await fetchPedidos(); resetPedidoForm(); }
+        
+        const { error } = await query;
+        if (error) {
+            console.error("Erro ao salvar pedido:", error);
+            alert("Falha ao salvar o pedido.");
+        } else {
+            await fetchPedidos();
+            resetPedidoForm();
+        }
     };
 
     const handleServirPedido = async (pedido) => {
@@ -87,6 +101,7 @@ const HomePage = () => {
             const novaQtd = parseFloat((pedido.quantidade - pedido.doses).toFixed(2));
             const novoRegistro = { data: new Date().toISOString() };
             const historicoAtual = pedido.historico || [];
+            
             const { error } = await supabase.from('pedidos').update({ quantidade: novaQtd, historico: [...historicoAtual, novoRegistro] }).eq('id', pedido.id);
             if (error) console.error("Erro ao servir pedido:", error);
             else await fetchPedidos();
@@ -146,12 +161,15 @@ const HomePage = () => {
                             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 bg-outline-variant rounded-full" />
                             <h2 className="text-2xl font-bold text-center mb-4 text-primary">{editPedido ? 'Editando Pedido' : 'Anotar Novo Pedido'}</h2>
                             <div className="space-y-4">
-                                <input type="text" name="nome" value={formData.nome} onChange={handleFormChange} placeholder="Nome (Ex: Vitamina D)" className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
+                                <input type="text" name="nome" value={formData.nome} onChange={handleFormChange} placeholder="Nome (Ex: Expresso Duplo)" className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                                 <input type="number" name="quantidade" value={formData.quantidade} onChange={handleFormChange} placeholder="Quantidade em estoque" className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                                 <input type="number" name="doses" value={formData.doses} onChange={handleFormChange} placeholder="Doses por dia" className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" />
                                 <input type="time" name="horario" value={formData.horario} onChange={handleFormChange} className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-on-surface-variant" />
                                 <select name="tipoImagem" value={formData.tipoImagem} onChange={handleFormChange} className="w-full p-3 bg-surface border-2 border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
-                                    <option value="coffee">Pílula</option><option value="cup">Líquido</option><option value="bean">Outro</option>
+                                    {/* TEMÁTICA CORRIGIDA */}
+                                    <option value="coffee">Café</option>
+                                    <option value="cup">Copo</option>
+                                    <option value="bean">Grão</option>
                                 </select>
                                 <motion.button whileTap={{ scale: 0.98 }} onClick={handleSalvarPedido} className="w-full bg-primary text-on-primary font-bold py-3 rounded-lg">Salvar Pedido</motion.button>
                             </div>
