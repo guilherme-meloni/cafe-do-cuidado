@@ -1,7 +1,0 @@
-// deno.jsonc
-{
-  "compilerOptions": {
-    "lib": ["deno.ns", "dom", "dom.iterable"]
-  },
-  "importMap": "./supabase/functions/import_map.json"
-}

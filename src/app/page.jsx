@@ -1,21 +1,22 @@
-// src/app/page.jsx (VERSÃO FINAL, COMPLETA E CORRIGIDA)
+// ----- ARQUIVO 2: src/app/page.jsx (VERSÃO LIMPA E ATUALIZADA) -----
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { getLocalData, setLocalData } from '../utils/localStorage';
 import { supabase } from '../utils/supabaseClient';
+import { getLocalData, setLocalData } from '../utils/localStorage';
 import Modal from '../components/Modal';
 import PedidoCard from '../components/PedidoCard';
 import ContatoCard from '../components/ContatoCard';
 import WhatsappModal from '../components/WhatsappModal';
 import SkeletonCard from '../components/SkeletonCard';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LuPlus, LuChefHat, LuBell, LuBellRing, LuBellOff } from "react-icons/lu"; 
+import { LuPlus, LuChefHat } from "react-icons/lu"; 
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const HomePage = () => {
-    // ESTADOS
+    // ESTADOS (Simplificados - sem a lógica de notificação manual)
     const [pedidos, setPedidos] = useState([]);
     const [contatos, setContatos] = useState(() => getLocalData('contatos') || []);
     const [isLoading, setIsLoading] = useState(true);
@@ -29,74 +30,26 @@ const HomePage = () => {
     const [contatoFormData, setContatoFormData] = useState({ nome: "", celular: "" });
     const [selectedContact, setSelectedContact] = useState(null);
     const [viewingHistoryFor, setViewingHistoryFor] = useState(null);
-    const [notificationPermission, setNotificationPermission] = useState('default');
-    const [isSubscribing, setIsSubscribing] = useState(false);
 
     // EFEITOS
     const fetchPedidos = async () => {
         setIsLoading(true);
         const { data, error } = await supabase.from('pedidos').select('*').order('created_at', { ascending: false });
-        if (error) {
-            console.error("Erro ao buscar pedidos:", error);
-            alert("Não foi possível carregar os pedidos.");
-        } else {
-            setPedidos(data || []);
-        }
+        if (error) console.error("Erro ao buscar pedidos:", error);
+        else setPedidos(data || []);
         setIsLoading(false);
     };
 
     useEffect(() => {
         fetchPedidos();
-        if (typeof window !== 'undefined') {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js').catch(err => console.error('Service Worker não registrado', err));
-            }
-            if ('Notification' in window) {
-                setNotificationPermission(Notification.permission);
-            }
-        }
     }, []);
 
     useEffect(() => { setLocalData('contatos', contatos); }, [contatos]);
 
     // FUNÇÕES
     const triggerHapticFeedback = () => { if (navigator?.vibrate) navigator.vibrate(50); };
-
-    const handleRequestNotificationPermission = async () => {
-        triggerHapticFeedback();
-        setIsSubscribing(true);
-        try {
-            if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-                throw new Error('Notificações Push não são suportadas neste navegador.');
-            }
-            const permission = await Notification.requestPermission();
-            setNotificationPermission(permission);
-            if (permission === 'granted') {
-                const registration = await navigator.serviceWorker.ready;
-                const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true, 
-                    applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-                });
-                const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/save-subscription`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(subscription)
-                });
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Falha ao salvar inscrição no servidor: ${errorText}`);
-                }
-                new Notification('Inscrição Concluída!', {
-                    body: 'Ótimo! As notificações push estão ativadas.', icon: '/icon-192x192.png'
-                });
-            }
-        } catch (error) {
-            console.error('Falha ao se inscrever:', error);
-            alert(`Não foi possível se inscrever: ${error.message}`);
-        } finally {
-            setIsSubscribing(false);
-        }
-    };
+    
+    // As funções de notificação foram REMOVIDAS. O OneSignal cuida de tudo.
 
     const handleFormChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const resetPedidoForm = () => { setModalPedidoOpen(false); setEditPedido(null); setFormData({ nome: "", quantidade: "", doses: "", horario: "", tipoImagem: "coffee" }); };
@@ -105,13 +58,7 @@ const HomePage = () => {
         triggerHapticFeedback();
         if (pedido) {
             setEditPedido(pedido);
-            setFormData({
-                nome: pedido.nome || "",
-                quantidade: pedido.quantidade || "",
-                doses: pedido.doses || "",
-                horario: pedido.horario || "",
-                tipoImagem: pedido.tipoImagem || "coffee"
-            });
+            setFormData({ nome: pedido.nome || "", quantidade: pedido.quantidade || "", doses: pedido.doses || "", horario: pedido.horario || "", tipoImagem: pedido.tipoImagem || "coffee" });
         } else {
             setEditPedido(null);
             setFormData({ nome: "", quantidade: "", doses: "", horario: "", tipoImagem: "coffee" });
@@ -123,21 +70,15 @@ const HomePage = () => {
         triggerHapticFeedback();
         const { nome, quantidade, doses, horario, tipoImagem } = formData;
         if (!nome.trim() || !quantidade || !doses) return;
-
         const pedidoData = { nome, quantidade: parseFloat(quantidade), doses: parseFloat(doses), horario: horario || null, tipoImagem };
-        let query;
         if (editPedido) {
-            query = supabase.from('pedidos').update(pedidoData).eq('id', editPedido.id);
+            pedidoData.id = editPedido.id;
         } else {
-            query = supabase.from('pedidos').insert([{ ...pedidoData, historico: [] }]);
+            pedidoData.historico = [];
         }
-        const { error } = await query;
-        if (error) {
-            console.error("Erro ao salvar pedido:", error);
-        } else {
-            await fetchPedidos();
-            resetPedidoForm();
-        }
+        const { error } = await supabase.from('pedidos').upsert(pedidoData).select();
+        if (error) console.error("Erro ao salvar pedido:", error);
+        else { await fetchPedidos(); resetPedidoForm(); }
     };
 
     const handleServirPedido = async (pedido) => {
@@ -147,16 +88,16 @@ const HomePage = () => {
             const novoRegistro = { data: new Date().toISOString() };
             const historicoAtual = pedido.historico || [];
             const { error } = await supabase.from('pedidos').update({ quantidade: novaQtd, historico: [...historicoAtual, novoRegistro] }).eq('id', pedido.id);
-            if (error) { console.error("Erro ao servir pedido:", error); }
-            else { await fetchPedidos(); }
+            if (error) console.error("Erro ao servir pedido:", error);
+            else await fetchPedidos();
         }
     };
 
     const handleApagarPedido = async (pedido) => {
         triggerHapticFeedback();
         const { error } = await supabase.from('pedidos').delete().eq('id', pedido.id);
-        if (error) { console.error("Erro ao apagar pedido:", error); }
-        else { await fetchPedidos(); }
+        if (error) console.error("Erro ao apagar pedido:", error);
+        else await fetchPedidos();
     };
 
     const handleOpenHistoryModal = (pedido) => { setViewingHistoryFor(pedido); setHistoryModalOpen(true); triggerHapticFeedback(); };
@@ -167,34 +108,17 @@ const HomePage = () => {
     const handleApagarContato = (index) => { triggerHapticFeedback(); const newContatos = contatos.filter((_, i) => i !== index); setContatos(newContatos); setLocalData('contatos', newContatos); };
     const handleWhatsappClick = (contato) => { triggerHapticFeedback(); setSelectedContact(contato); setWhatsappModalOpen(true); };
 
-    const renderNotificationButton = () => {
-        const [isMounted, setIsMounted] = useState(false);
-        useEffect(() => { setIsMounted(true); }, []);
-        if (!isMounted) return <div className="p-2.5 w-[40px] h-[40px]"></div>;
-        if (isSubscribing) return <div title="Inscrevendo..." className="bg-secondary text-on-secondary p-2.5 rounded-full animate-spin"><LuPlus className="rotate-45" /></div>;
-        switch (notificationPermission) {
-            case 'granted': return <div title="Notificações ativas" className="bg-tertiary text-on-tertiary p-2.5 rounded-full flex items-center justify-center"><LuBellRing /></div>;
-            case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Você precisa ir nas configurações do seu navegador para permitir.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
-            default: return <motion.button whileTap={{ scale: 0.95 }} title="Ativar Notificações" onClick={handleRequestNotificationPermission} className="bg-secondary text-on-secondary p-2.5 rounded-full animate-pulse"><LuBell /></motion.button>;
-        }
-    };
-
     return (
         <main className="p-4 font-sans min-h-screen">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-on-surface">Café do Cuidado</h1>
-                <div className="flex items-center gap-2">
-                    {renderNotificationButton()}
-                    <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleOpenPedidoModal(null)} className="bg-primary text-on-primary font-bold py-2 px-4 rounded-full flex items-center gap-2 text-sm">
-                        <LuPlus /> Pedido
-                    </motion.button>
-                </div>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleOpenPedidoModal(null)} className="bg-primary text-on-primary font-bold py-2 px-4 rounded-full flex items-center gap-2 text-sm">
+                    <LuPlus /> Pedido
+                </motion.button>
             </div>
             
             <div className="grid grid-cols-1 gap-4">
-                {isLoading ? (
-                    <><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
-                ) : (
+                {isLoading ? <><SkeletonCard /><SkeletonCard /></> : (
                     <AnimatePresence>
                         {pedidos.map((p) => (
                             <PedidoCard key={p.id} pedido={p} onServe={() => handleServirPedido(p)} onEdit={() => handleOpenPedidoModal(p)} onDelete={() => handleApagarPedido(p)} onViewHistory={() => handleOpenHistoryModal(p)} />
@@ -202,7 +126,7 @@ const HomePage = () => {
                     </AnimatePresence>
                 )}
             </div>
-            { !isLoading && pedidos.length === 0 && <p className="text-on-surface-variant text-center mt-4">Nenhum pedido anotado ainda.</p>}
+            {!isLoading && pedidos.length === 0 && <p className="text-on-surface-variant text-center mt-4">Nenhum pedido anotado ainda.</p>}
 
             <div className="flex justify-between items-center my-8 mt-12">
                 <h1 className="text-xl font-bold text-on-surface flex items-center gap-3"><LuChefHat /> Baristas</h1>
