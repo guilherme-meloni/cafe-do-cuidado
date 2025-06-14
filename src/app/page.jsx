@@ -1,4 +1,4 @@
-// src/app/page.jsx (VERSÃO FINAL COMPLETA - CONECTADO AO SUPABASE)
+// src/app/page.jsx (VERSÃO FINAL COM VARIÁVEIS DE AMBIENTE)
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -14,8 +14,9 @@ import { LuPlus, LuChefHat, LuBell, LuBellRing, LuBellOff } from "react-icons/lu
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-const VAPID_PUBLIC_KEY = 'BP7JRgSu5mlL4Pm5kr_JG4TQzQYHNhhxDbPlRLQkw_zI-gMB5L-AHPATO3iAf5xdZrRODHCx06lGMazbErRtOlk';
-const SUPABASE_FUNCTION_URL = 'https://hzblgsovbgllcfqxeszn.supabase.co/functions/v1/save-subscription';
+// CORREÇÃO: Lendo a chave VAPID do ambiente, assim como as chaves do Supabase
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const SUPABASE_FUNCTION_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/save-subscription`;
 
 const calcularDiasRestantes = (q, d) => (d > 0 ? Math.floor(q / d) : 0);
 
