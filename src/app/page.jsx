@@ -1,27 +1,29 @@
-// src/app/page.jsx (VERSÃO FINAL, COMPLETA E CORRIGIDA)
+// src/app/page.jsx (VERSÃO FINAL COMPLETA - CONECTADO AO SUPABASE)
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { getLocalData, setLocalData } from '../utils/localStorage';
+import { supabase } from '../utils/supabaseClient';
 import Modal from '../components/Modal';
 import PedidoCard from '../components/PedidoCard';
 import ContatoCard from '../components/ContatoCard';
 import WhatsappModal from '../components/WhatsappModal';
+import SkeletonCard from '../components/SkeletonCard';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LuPlus, LuChefHat, LuBell, LuBellRing, LuBellOff } from "react-icons/lu"; 
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Chave Pública VAPID gerada
 const VAPID_PUBLIC_KEY = 'BP7JRgSu5mlL4Pm5kr_JG4TQzQYHNhhxDbPlRLQkw_zI-gMB5L-AHPATO3iAf5xdZrRODHCx06lGMazbErRtOlk';
-// URL completa da sua função Supabase
 const SUPABASE_FUNCTION_URL = 'https://hzblgsovbgllcfqxeszn.supabase.co/functions/v1/save-subscription';
 
 const calcularDiasRestantes = (q, d) => (d > 0 ? Math.floor(q / d) : 0);
 
 const HomePage = () => {
-    const [pedidos, setPedidos] = useState(() => getLocalData('pedidos') || []);
+    // ESTADOS
+    const [pedidos, setPedidos] = useState([]);
     const [contatos, setContatos] = useState(() => getLocalData('contatos') || []);
+    const [isLoading, setIsLoading] = useState(true);
     const [modalPedidoOpen, setModalPedidoOpen] = useState(false);
     const [modalContatoOpen, setModalContatoOpen] = useState(false);
     const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
@@ -34,27 +36,37 @@ const HomePage = () => {
     const [viewingHistoryFor, setViewingHistoryFor] = useState(null);
     const [notificationPermission, setNotificationPermission] = useState('default');
     const [isSubscribing, setIsSubscribing] = useState(false);
-    const [isMounted, setIsMounted] = useState(false);
 
-    useEffect(() => { setIsMounted(true); }, []);
-    useEffect(() => { setLocalData('pedidos', pedidos); }, [pedidos]);
-    useEffect(() => { setLocalData('contatos', contatos); }, [contatos]);
-    
+    // EFEITOS
     useEffect(() => {
-        if (isMounted) {
+        fetchPedidos();
+        if (typeof window !== 'undefined') {
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => console.log('Service Worker registrado com sucesso:', registration))
-                    .catch(error => console.error('Falha ao registrar Service Worker:', error));
+                navigator.serviceWorker.register('/sw.js').catch(err => console.error('Service Worker não registrado', err));
             }
             if ('Notification' in window) {
                 setNotificationPermission(Notification.permission);
             }
         }
-    }, [isMounted]);
+    }, []);
 
+    useEffect(() => { setLocalData('contatos', contatos); }, [contatos]);
+
+    // FUNÇÕES
     const triggerHapticFeedback = () => { if (navigator?.vibrate) navigator.vibrate(50); };
-    
+
+    const fetchPedidos = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase.from('pedidos').select('*').order('created_at', { ascending: false });
+        if (error) {
+            console.error("Erro ao buscar pedidos:", error);
+            alert("Não foi possível carregar os pedidos.");
+        } else {
+            setPedidos(data);
+        }
+        setIsLoading(false);
+    };
+
     const handleRequestNotificationPermission = async () => {
         triggerHapticFeedback();
         setIsSubscribing(true);
@@ -91,8 +103,20 @@ const HomePage = () => {
     const handleOpenPedidoModal = (index = null) => {
         if (index !== null) {
             const itemParaEditar = pedidos[index];
-            if (itemParaEditar) { setEditIndex(index); setFormData(itemParaEditar); } 
-            else { console.error("Item inválido"); resetPedidoForm(); }
+            if (itemParaEditar) {
+                 setEditIndex(index); 
+                 // Garante que todos os campos do formulário existam no estado
+                 setFormData({
+                    nome: itemParaEditar.nome || "",
+                    quantidade: itemParaEditar.quantidade || "",
+                    doses: itemParaEditar.doses || "",
+                    horario: itemParaEditar.horario || "",
+                    tipoImagem: itemParaEditar.tipoImagem || "coffee"
+                 });
+            } else {
+                 console.error("Item inválido para edição"); 
+                 resetPedidoForm(); 
+            }
         } else {
             setEditIndex(null);
             setFormData({ nome: "", quantidade: "", doses: "", horario: "", tipoImagem: "coffee" });
@@ -101,41 +125,71 @@ const HomePage = () => {
         triggerHapticFeedback();
     };
 
-    const handleSalvarPedido = () => {
-        const { nome, quantidade, doses } = formData;
-        if (!nome.trim() || !quantidade || !doses) return;
-        let novoPedido;
-        if (editIndex !== null) {
-            novoPedido = { ...pedidos[editIndex], ...formData, quantidade: parseFloat(quantidade), doses: parseFloat(doses), diasRestantes: calcularDiasRestantes(parseFloat(quantidade), parseFloat(doses)) };
-        } else {
-            novoPedido = { ...formData, id: Date.now(), quantidade: parseFloat(quantidade), doses: parseFloat(doses), diasRestantes: calcularDiasRestantes(parseFloat(quantidade), parseFloat(doses)), historico: [] };
-        }
-        const updated = editIndex !== null ? pedidos.map((p, i) => (i === editIndex ? novoPedido : p)) : [...pedidos, novoPedido];
-        setPedidos(updated);
-        resetPedidoForm();
+    const handleSalvarPedido = async () => {
         triggerHapticFeedback();
+        const { nome, quantidade, doses, horario, tipoImagem } = formData;
+        if (!nome.trim() || !quantidade || !doses) return;
+        
+        let pedidoData;
+        if (editIndex !== null) {
+            const pedidoOriginal = pedidos[editIndex];
+            pedidoData = { ...pedidoOriginal, nome, quantidade: parseFloat(quantidade), doses: parseFloat(doses), horario, tipoImagem };
+        } else {
+            pedidoData = { nome, quantidade: parseFloat(quantidade), doses: parseFloat(doses), horario, tipoImagem, historico: [] };
+        }
+
+        const { error } = await supabase.from('pedidos').upsert(pedidoData).select();
+        
+        if (error) {
+            console.error("Erro ao salvar pedido:", error);
+            alert("Falha ao salvar o pedido.");
+        } else {
+            await fetchPedidos();
+            resetPedidoForm();
+        }
     };
 
-    const handleServirPedido = (index) => {
+    const handleServirPedido = async (index) => {
+        triggerHapticFeedback();
         const p = pedidos[index];
         if (p && p.quantidade >= p.doses) {
             const novaQtd = parseFloat((p.quantidade - p.doses).toFixed(2));
             const novoRegistro = { data: new Date().toISOString() };
             const historicoAtual = p.historico || [];
-            const updated = pedidos.map((item, i) => (i === index ? { ...item, quantidade: novaQtd, diasRestantes: calcularDiasRestantes(novaQtd, p.doses), historico: [...historicoAtual, novoRegistro] } : item));
-            setPedidos(updated);
-            triggerHapticFeedback();
-            return true;
-        } else { return false; }
+            
+            const { error } = await supabase.from('pedidos').update({ 
+                quantidade: novaQtd, 
+                historico: [...historicoAtual, novoRegistro] 
+            }).eq('id', p.id);
+
+            if (error) {
+                console.error("Erro ao servir pedido:", error);
+                return false;
+            } else {
+                await fetchPedidos();
+                return true;
+            }
+        }
+        return false;
     };
 
-    const handleApagarPedido = (index) => { setPedidos(pedidos.filter((_, i) => i !== index)); triggerHapticFeedback(); };
+    const handleApagarPedido = async (index) => {
+        triggerHapticFeedback();
+        const pedidoParaApagar = pedidos[index];
+        const { error } = await supabase.from('pedidos').delete().eq('id', pedidoParaApagar.id);
+        if (error) {
+            console.error("Erro ao apagar pedido:", error);
+        } else {
+            await fetchPedidos();
+        }
+    };
+
     const handleOpenHistoryModal = (index) => { const item = pedidos[index]; if (item) { setViewingHistoryFor(item); setHistoryModalOpen(true); triggerHapticFeedback(); } };
     const handleContatoFormChange = (e) => setContatoFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const resetContatoForm = () => { setModalContatoOpen(false); setEditContatoIndex(null); setContatoFormData({ nome: "", celular: "" }); };
     const handleOpenContatoModal = (index = null) => { if (index !== null) { const item = contatos[index]; if (item) { setEditContatoIndex(index); setContatoFormData(item); } } else { setEditContatoIndex(null); setContatoFormData({ nome: "", celular: "" }); } setModalContatoOpen(true); triggerHapticFeedback(); };
-    const handleSalvarContato = () => { const { nome, celular } = contatoFormData; if (!nome.trim() || !celular.trim()) return; const updated = editContatoIndex !== null ? contatos.map((c, i) => (i === editContatoIndex ? contatoFormData : c)) : [...contatos, contatoFormData]; setContatos(updated); resetContatoForm(); triggerHapticFeedback(); };
-    const handleApagarContato = (index) => { setContatos(contatos.filter((_, i) => i !== index)); triggerHapticFeedback(); };
+    const handleSalvarContato = () => { const { nome, celular } = contatoFormData; if (!nome.trim() || !celular.trim()) return; const updated = editContatoIndex !== null ? contatos.map((c, i) => (i === editContatoIndex ? contatoFormData : c)) : [...contatos, contatoFormData]; setContatos(updated); setLocalData('contatos', updated); resetContatoForm(); triggerHapticFeedback(); };
+    const handleApagarContato = (index) => { const newContatos = contatos.filter((_, i) => i !== index); setContatos(newContatos); setLocalData('contatos', newContatos); triggerHapticFeedback(); };
     const handleWhatsappClick = (contato) => { setSelectedContact(contato); setWhatsappModalOpen(true); triggerHapticFeedback(); };
 
     const renderNotificationButton = () => {
@@ -148,7 +202,7 @@ const HomePage = () => {
             case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Você precisa ir nas configurações do seu navegador para permitir.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
             default: return <motion.button whileTap={{ scale: 0.95 }} title="Ativar Notificações" onClick={handleRequestNotificationPermission} className="bg-secondary text-on-secondary p-2.5 rounded-full animate-pulse"><LuBell /></motion.button>;
         }
-    }
+    };
 
     return (
         <main className="p-4 font-sans min-h-screen">
@@ -163,12 +217,24 @@ const HomePage = () => {
             </div>
             
             <div className="grid grid-cols-1 gap-4">
-                <AnimatePresence>
-                    {pedidos.map((p, index) => (
-                        p && <PedidoCard key={p.id || index} pedido={p} onServe={() => handleServirPedido(index)} onEdit={() => handleOpenPedidoModal(index)} onDelete={() => handleApagarPedido(index)} onViewHistory={() => handleOpenHistoryModal(index)} />
-                    ))}
-                </AnimatePresence>
+                {isLoading ? (
+                    <><SkeletonCard /><SkeletonCard /></>
+                ) : (
+                    <AnimatePresence>
+                        {pedidos.map((p, index) => (
+                            <PedidoCard 
+                                key={p.id}
+                                pedido={{...p, diasRestantes: calcularDiasRestantes(p.quantidade, p.doses)}} 
+                                onServe={() => handleServirPedido(index)} 
+                                onEdit={() => handleOpenPedidoModal(index)} 
+                                onDelete={() => handleApagarPedido(index)}
+                                onViewHistory={() => handleOpenHistoryModal(index)} 
+                            />
+                        ))}
+                    </AnimatePresence>
+                )}
             </div>
+            { !isLoading && pedidos.length === 0 && <p className="text-on-surface-variant text-center mt-4">Nenhum pedido anotado ainda.</p>}
 
             <div className="flex justify-between items-center my-8 mt-12">
                 <h1 className="text-xl font-bold text-on-surface flex items-center gap-3"><LuChefHat /> Baristas</h1>
