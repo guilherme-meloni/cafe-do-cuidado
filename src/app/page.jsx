@@ -1,4 +1,4 @@
-// src/app/page.jsx (VERSÃO COMPLETA, CORRIGIDA E FINAL)
+// src/app/page.jsx (VERSÃO FINAL, COMPLETA E CORRIGIDA)
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -12,8 +12,10 @@ import { LuPlus, LuChefHat, LuBell, LuBellRing, LuBellOff } from "react-icons/lu
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// COLE A SUA CHAVE PÚBLICA VAPID AQUI
+// Chave Pública VAPID gerada
 const VAPID_PUBLIC_KEY = 'BP7JRgSu5mlL4Pm5kr_JG4TQzQYHNhhxDbPlRLQkw_zI-gMB5L-AHPATO3iAf5xdZrRODHCx06lGMazbErRtOlk';
+// URL completa da sua função Supabase
+const SUPABASE_FUNCTION_URL = 'https://hzblgsovbgllcfqxeszn.supabase.co/functions/v1/save-subscription';
 
 const calcularDiasRestantes = (q, d) => (d > 0 ? Math.floor(q / d) : 0);
 
@@ -40,58 +42,44 @@ const HomePage = () => {
     
     useEffect(() => {
         if (isMounted) {
-            // Registra o Service Worker
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/sw.js')
                     .then(registration => console.log('Service Worker registrado com sucesso:', registration))
                     .catch(error => console.error('Falha ao registrar Service Worker:', error));
             }
-            // Checa a permissão de notificação
             if ('Notification' in window) {
                 setNotificationPermission(Notification.permission);
             }
         }
     }, [isMounted]);
 
-    const triggerHapticFeedback = () => {
-      if (navigator && navigator.vibrate) {
-        navigator.vibrate(50);
-      }
-    };
+    const triggerHapticFeedback = () => { if (navigator?.vibrate) navigator.vibrate(50); };
     
     const handleRequestNotificationPermission = async () => {
         triggerHapticFeedback();
         setIsSubscribing(true);
-
         try {
-            if (!('Notification' in window) || !navigator.serviceWorker) {
-                throw new Error('Notificações não são suportadas neste navegador.');
-            }
-
+            if (!('Notification' in window) || !navigator.serviceWorker) throw new Error('Notificações não suportadas');
             const permission = await Notification.requestPermission();
             setNotificationPermission(permission);
-
             if (permission === 'granted') {
                 const registration = await navigator.serviceWorker.ready;
                 const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: VAPID_PUBLIC_KEY
+                    userVisibleOnly: true, applicationServerKey: VAPID_PUBLIC_KEY
                 });
-                
-                await fetch('https://hzblgsovbgllcfqxeszn.supabase.co', {
+                const response = await fetch(SUPABASE_FUNCTION_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(subscription)
                 });
-
+                if (!response.ok) throw new Error('Falha ao salvar inscrição no servidor.');
                 new Notification('Inscrição Concluída!', {
-                    body: 'Ótimo! As notificações push estão ativadas.',
-                    icon: '/icon-192x192.png'
+                    body: 'Ótimo! As notificações push estão ativadas.', icon: '/icon-192x192.png'
                 });
             }
         } catch (error) {
-            console.error('Falha ao se inscrever para notificações push:', error);
-            alert('Não foi possível se inscrever para as notificações. Verifique o console.');
+            console.error('Falha ao se inscrever:', error);
+            alert('Não foi possível se inscrever. Verifique o console.');
         } finally {
             setIsSubscribing(false);
         }
@@ -143,42 +131,21 @@ const HomePage = () => {
 
     const handleApagarPedido = (index) => { setPedidos(pedidos.filter((_, i) => i !== index)); triggerHapticFeedback(); };
     const handleOpenHistoryModal = (index) => { const item = pedidos[index]; if (item) { setViewingHistoryFor(item); setHistoryModalOpen(true); triggerHapticFeedback(); } };
-    
     const handleContatoFormChange = (e) => setContatoFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const resetContatoForm = () => { setModalContatoOpen(false); setEditContatoIndex(null); setContatoFormData({ nome: "", celular: "" }); };
-    
-    const handleOpenContatoModal = (index = null) => { 
-        if (index !== null) { 
-            const item = contatos[index];
-            if (item) { setEditContatoIndex(index); setContatoFormData(item); }
-        } else { 
-            setEditContatoIndex(null); 
-            setContatoFormData({ nome: "", celular: "" }); 
-        } 
-        setModalContatoOpen(true); 
-        triggerHapticFeedback(); 
-    };
-    
-    const handleSalvarContato = () => { 
-        const { nome, celular } = contatoFormData; 
-        if (!nome.trim() || !celular.trim()) return; 
-        const updated = editContatoIndex !== null ? contatos.map((c, i) => (i === editContatoIndex ? contatoFormData : c)) : [...contatos, contatoFormData]; 
-        setContatos(updated); 
-        resetContatoForm(); 
-        triggerHapticFeedback(); 
-    };
-    
+    const handleOpenContatoModal = (index = null) => { if (index !== null) { const item = contatos[index]; if (item) { setEditContatoIndex(index); setContatoFormData(item); } } else { setEditContatoIndex(null); setContatoFormData({ nome: "", celular: "" }); } setModalContatoOpen(true); triggerHapticFeedback(); };
+    const handleSalvarContato = () => { const { nome, celular } = contatoFormData; if (!nome.trim() || !celular.trim()) return; const updated = editContatoIndex !== null ? contatos.map((c, i) => (i === editContatoIndex ? contatoFormData : c)) : [...contatos, contatoFormData]; setContatos(updated); resetContatoForm(); triggerHapticFeedback(); };
     const handleApagarContato = (index) => { setContatos(contatos.filter((_, i) => i !== index)); triggerHapticFeedback(); };
     const handleWhatsappClick = (contato) => { setSelectedContact(contato); setWhatsappModalOpen(true); triggerHapticFeedback(); };
 
     const renderNotificationButton = () => {
-        if (!isMounted) return <div className="p-2.5 w-[40px] h-[40px]"></div>; // Espaço reservado para evitar pulo de layout
+        if (!isMounted) return <div className="p-2.5 w-[40px] h-[40px]"></div>;
         if (isSubscribing) {
             return <div title="Inscrevendo..." className="bg-secondary text-on-secondary p-2.5 rounded-full animate-spin"><LuPlus className="rotate-45" /></div>;
         }
         switch (notificationPermission) {
             case 'granted': return <div title="Notificações ativas" className="bg-tertiary text-on-tertiary p-2.5 rounded-full flex items-center justify-center"><LuBellRing /></div>;
-            case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Para reativá-las, você precisa ir nas configurações do seu navegador, encontrar as permissões deste site e permitir as notificações.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
+            case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Você precisa ir nas configurações do seu navegador para permitir.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
             default: return <motion.button whileTap={{ scale: 0.95 }} title="Ativar Notificações" onClick={handleRequestNotificationPermission} className="bg-secondary text-on-secondary p-2.5 rounded-full animate-pulse"><LuBell /></motion.button>;
         }
     }
@@ -198,7 +165,7 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-4">
                 <AnimatePresence>
                     {pedidos.map((p, index) => (
-                        p && <PedidoCard key={p.id || index} pedido={p} isMounted={isMounted} onServe={() => handleServirPedido(index)} onEdit={() => handleOpenPedidoModal(index)} onDelete={() => handleApagarPedido(index)} onViewHistory={() => handleOpenHistoryModal(index)} />
+                        p && <PedidoCard key={p.id || index} pedido={p} onServe={() => handleServirPedido(index)} onEdit={() => handleOpenPedidoModal(index)} onDelete={() => handleApagarPedido(index)} onViewHistory={() => handleOpenHistoryModal(index)} />
                     ))}
                 </AnimatePresence>
             </div>
