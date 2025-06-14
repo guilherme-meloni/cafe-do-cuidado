@@ -1,4 +1,4 @@
-// src/app/page.jsx (COM CORREÇÃO NO BOTÃO DE CRIAR CONTATO)
+// src/app/page.jsx (VERSÃO COMPLETA, CORRIGIDA E FINAL)
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -11,6 +11,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { LuPlus, LuChefHat, LuBell, LuBellRing, LuBellOff } from "react-icons/lu"; 
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+// COLE A SUA CHAVE PÚBLICA VAPID AQUI
+const VAPID_PUBLIC_KEY = 'BP7JRgSu5mlL4Pm5kr_JG4TQzQYHNhhxDbPlRLQkw_zI-gMB5L-AHPATO3iAf5xdZrRODHCx06lGMazbErRtOlk';
 
 const calcularDiasRestantes = (q, d) => (d > 0 ? Math.floor(q / d) : 0);
 
@@ -28,15 +31,27 @@ const HomePage = () => {
     const [selectedContact, setSelectedContact] = useState(null);
     const [viewingHistoryFor, setViewingHistoryFor] = useState(null);
     const [notificationPermission, setNotificationPermission] = useState('default');
-    const [notificationTimers, setNotificationTimers] = useState({});
+    const [isSubscribing, setIsSubscribing] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
 
+    useEffect(() => { setIsMounted(true); }, []);
     useEffect(() => { setLocalData('pedidos', pedidos); }, [pedidos]);
     useEffect(() => { setLocalData('contatos', contatos); }, [contatos]);
+    
     useEffect(() => {
-        if ('Notification' in window) {
-            setNotificationPermission(Notification.permission);
+        if (isMounted) {
+            // Registra o Service Worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => console.log('Service Worker registrado com sucesso:', registration))
+                    .catch(error => console.error('Falha ao registrar Service Worker:', error));
+            }
+            // Checa a permissão de notificação
+            if ('Notification' in window) {
+                setNotificationPermission(Notification.permission);
+            }
         }
-    }, []);
+    }, [isMounted]);
 
     const triggerHapticFeedback = () => {
       if (navigator && navigator.vibrate) {
@@ -44,55 +59,42 @@ const HomePage = () => {
       }
     };
     
-    useEffect(() => {
-        Object.values(notificationTimers).forEach(clearTimeout);
-        const newTimers = {};
-        if (notificationPermission === 'granted') {
-            pedidos.forEach(pedido => {
-                if (pedido && pedido.horario && pedido.id) {
-                    const [horas, minutos] = pedido.horario.split(':');
-                    const agora = new Date();
-                    let dataNotificacao = new Date();
-                    dataNotificacao.setHours(horas, minutos, 0, 0);
-
-                    if (dataNotificacao <= agora) {
-                        dataNotificacao.setDate(dataNotificacao.getDate() + 1);
-                    }
-                    const delay = dataNotificacao.getTime() - agora.getTime();
-                    if (delay > 0) {
-                        const timerId = setTimeout(() => {
-                            new Notification('Hora do seu Cuidado!', {
-                                body: `Está na hora de servir: ${pedido.nome}`,
-                                icon: '/icon-192x192.png',
-                                vibrate: [200, 100, 200]
-                            });
-                        }, delay);
-                        newTimers[pedido.id] = timerId;
-                    }
-                }
-            });
-        }
-        setNotificationTimers(newTimers);
-        return () => {
-            Object.values(newTimers).forEach(clearTimeout);
-        };
-    }, [pedidos, notificationPermission]);
-
-    const handleRequestNotificationPermission = () => {
+    const handleRequestNotificationPermission = async () => {
         triggerHapticFeedback();
-        if (!('Notification' in window)) {
-            alert('Este navegador não suporta notificações.');
-            return;
-        }
-        Notification.requestPermission().then(permission => {
+        setIsSubscribing(true);
+
+        try {
+            if (!('Notification' in window) || !navigator.serviceWorker) {
+                throw new Error('Notificações não são suportadas neste navegador.');
+            }
+
+            const permission = await Notification.requestPermission();
             setNotificationPermission(permission);
+
             if (permission === 'granted') {
-                new Notification('Café do Cuidado', {
-                    body: 'Ótimo! As notificações estão ativadas.',
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: VAPID_PUBLIC_KEY
+                });
+                
+                await fetch('https://hzblgsovbgllcfqxeszn.supabase.co', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+
+                new Notification('Inscrição Concluída!', {
+                    body: 'Ótimo! As notificações push estão ativadas.',
                     icon: '/icon-192x192.png'
                 });
             }
-        });
+        } catch (error) {
+            console.error('Falha ao se inscrever para notificações push:', error);
+            alert('Não foi possível se inscrever para as notificações. Verifique o console.');
+        } finally {
+            setIsSubscribing(false);
+        }
     };
 
     const handleFormChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -147,8 +149,8 @@ const HomePage = () => {
     
     const handleOpenContatoModal = (index = null) => { 
         if (index !== null) { 
-            setEditContatoIndex(index); 
-            setContatoFormData(contatos[index]); 
+            const item = contatos[index];
+            if (item) { setEditContatoIndex(index); setContatoFormData(item); }
         } else { 
             setEditContatoIndex(null); 
             setContatoFormData({ nome: "", celular: "" }); 
@@ -170,9 +172,13 @@ const HomePage = () => {
     const handleWhatsappClick = (contato) => { setSelectedContact(contato); setWhatsappModalOpen(true); triggerHapticFeedback(); };
 
     const renderNotificationButton = () => {
+        if (!isMounted) return <div className="p-2.5 w-[40px] h-[40px]"></div>; // Espaço reservado para evitar pulo de layout
+        if (isSubscribing) {
+            return <div title="Inscrevendo..." className="bg-secondary text-on-secondary p-2.5 rounded-full animate-spin"><LuPlus className="rotate-45" /></div>;
+        }
         switch (notificationPermission) {
             case 'granted': return <div title="Notificações ativas" className="bg-tertiary text-on-tertiary p-2.5 rounded-full flex items-center justify-center"><LuBellRing /></div>;
-            case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Você precisa ir nas configurações do seu navegador para permitir.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
+            case 'denied': return <motion.button whileTap={{ scale: 0.95 }} title="Notificações bloqueadas" onClick={() => alert('As notificações foram bloqueadas. Para reativá-las, você precisa ir nas configurações do seu navegador, encontrar as permissões deste site e permitir as notificações.')} className="bg-error text-on-error p-2.5 rounded-full"><LuBellOff /></motion.button>;
             default: return <motion.button whileTap={{ scale: 0.95 }} title="Ativar Notificações" onClick={handleRequestNotificationPermission} className="bg-secondary text-on-secondary p-2.5 rounded-full animate-pulse"><LuBell /></motion.button>;
         }
     }
@@ -192,14 +198,13 @@ const HomePage = () => {
             <div className="grid grid-cols-1 gap-4">
                 <AnimatePresence>
                     {pedidos.map((p, index) => (
-                        p && <PedidoCard key={p.id || index} pedido={p} onServe={() => handleServirPedido(index)} onEdit={() => handleOpenPedidoModal(index)} onDelete={() => handleApagarPedido(index)} onViewHistory={() => handleOpenHistoryModal(index)} />
+                        p && <PedidoCard key={p.id || index} pedido={p} isMounted={isMounted} onServe={() => handleServirPedido(index)} onEdit={() => handleOpenPedidoModal(index)} onDelete={() => handleApagarPedido(index)} onViewHistory={() => handleOpenHistoryModal(index)} />
                     ))}
                 </AnimatePresence>
             </div>
 
             <div className="flex justify-between items-center my-8 mt-12">
                 <h1 className="text-xl font-bold text-on-surface flex items-center gap-3"><LuChefHat /> Baristas</h1>
-                {/* CORREÇÃO AQUI */}
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleOpenContatoModal()} className="bg-primary text-on-primary font-bold py-2 px-4 rounded-full flex items-center gap-2 text-sm">
                     <LuPlus /> Contato
                 </motion.button>

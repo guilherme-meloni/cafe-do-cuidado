@@ -1,17 +1,17 @@
 // next.config.mjs
 
-import withPWA from 'next-pwa';
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Suas outras configurações do Next.js podem vir aqui
+  reactStrictMode: true,
 };
 
-const pwaConfig = withPWA({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
+// Importa o plugin do PWA
+import withPWAInit from "@ducanh2912/next-pwa";
+
+// Ativa o PWA
+const withPWA = withPWAInit({
+  dest: "public", // O Service Worker será gerado na pasta public
+  disable: process.env.NODE_ENV === "development", // Desativa o PWA em modo de desenvolvimento para evitar bugs
 });
 
-export default pwaConfig(nextConfig);
+export default withPWA(nextConfig);
